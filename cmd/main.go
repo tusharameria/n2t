@@ -87,6 +87,7 @@ func main() {
 	defer outFile.Close()
 
 	done := make(chan struct{})
+	messages := make(chan string, 1000)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
@@ -100,12 +101,6 @@ func main() {
 
 	go func() {
 		scanner := bufio.NewScanner(file)
-		writer := bufio.NewWriter(outFile)
-		defer func() {
-			if err := writer.Flush(); err != nil {
-				fmt.Printf("%s\n", err)
-			}
-		}()
 		i := 0
 		for {
 			if scanner.Scan() {
@@ -128,20 +123,31 @@ func main() {
 					}
 					text = fmt.Sprintf("// %s\n%s", text, buff)
 				}
-				_, err := writer.WriteString(text + "\n")
-				if err != nil {
-					fmt.Printf("write error at line %d: %v\n", i, err)
-					shutdown()
-					return
-
-				}
+				messages <- text + "\n"
 				// time.Sleep(1 * time.Second)
 			} else {
+				close(messages)
 				shutdown()
 				return
 			}
 		}
 	}()
+
+	writer := bufio.NewWriter(outFile)
+	defer func() {
+		if err := writer.Flush(); err != nil {
+			fmt.Printf("%s\n", err)
+		}
+	}()
+
+	for msg := range messages {
+		_, err := writer.WriteString(msg)
+		if err != nil {
+			fmt.Printf("write error at line: %s\nerr : %v\n", msg, err)
+			shutdown()
+			return
+		}
+	}
 
 	go func() {
 		sig := <-sigCh
