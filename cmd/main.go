@@ -33,6 +33,9 @@ const NEG = "neg"
 const EQ = "eq"
 const GT = "gt"
 const LT = "lt"
+const AND = "and"
+const OR = "or"
+const NOT = "not"
 
 var argOnes = map[string]bool{
 	PUSH: true,
@@ -49,20 +52,30 @@ var argTwos = map[string]string{
 	TEMP:     "R5",
 }
 
+const EQ_TRUE = "EQ_TRUE"
+const EQ_END = "EQ_END"
+const GT_TRUE = "GT_TRUE"
+const GT_END = "GT_END"
+const LT_TRUE = "LT_TRUE"
+const LT_END = "LT_END"
+
 var alArgs = map[string]string{
 	ADD: "@SP\nM=M-1\nA=M\nD=M\nA=A-1\nM=D+M\n",
 	SUB: "@SP\nM=M-1\nA=M\nD=M\nA=A-1\nM=M-D\n",
 	NEG: "@SP\nA=M-1\nM=-M\n",
-	EQ:  "",
-	GT:  "",
-	LT:  "",
+	EQ:  fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\nA=A-1\nD=M-D\n@%s\nD;JEQ\n@SP\nA=M-1\nM=0\n@%s\n0;JMP\n(%s)\n@SP\nA=M-1\nM=-1\n(%s)\n", EQ_TRUE, EQ_END, EQ_TRUE, EQ_END),
+	GT:  fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\nA=A-1\nD=M-D\n@%s\nD;JGT\n@SP\nA=M-1\nM=0\n@%s\n0;JMP\n(%s)\n@SP\nA=M-1\nM=-1\n(%s)\n", GT_TRUE, GT_END, GT_TRUE, GT_END),
+	LT:  fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\nA=A-1\nD=M-D\n@%s\nD;JLT\n@SP\nA=M-1\nM=0\n@%s\n0;JMP\n(%s)\n@SP\nA=M-1\nM=-1\n(%s)\n", LT_TRUE, LT_END, LT_TRUE, LT_END),
+	AND: "@SP\nM=M-1\nA=M\nD=M\nA=A-1\nM=D&M\n",
+	OR:  "@SP\nM=M-1\nA=M\nD=M\nA=A-1\nM=D|M\n",
+	NOT: "@SP\nA=M-1\nM=!M\n",
 }
 
 func main() {
 	now := time.Now()
 	fmt.Println("Starting Translator...")
 
-	file, err := os.Open("tests/07/PointerTest/PointerTest.vm")
+	file, err := os.Open("tests/07/StackTest/StackTest.vm")
 	if err != nil {
 		fmt.Printf("%s\n", err)
 		return
@@ -103,6 +116,9 @@ func main() {
 	go func() {
 		scanner := bufio.NewScanner(file)
 		i := 0
+		eqCount := 0
+		gtCount := 0
+		ltCount := 0
 		for {
 			if scanner.Scan() {
 				i++
@@ -121,6 +137,23 @@ func main() {
 					if !ok {
 						fmt.Printf("%s is not a valid alArgs key\n", text)
 						return
+					}
+					if text == EQ || text == GT || text == LT {
+						if text == EQ {
+							buff = strings.ReplaceAll(buff, EQ_TRUE, fmt.Sprintf("EQ_TRUE_%d", eqCount))
+							buff = strings.ReplaceAll(buff, EQ_END, fmt.Sprintf("EQ_END_%d", eqCount))
+							eqCount++
+						}
+						if text == GT {
+							buff = strings.ReplaceAll(buff, GT_TRUE, fmt.Sprintf("GT_TRUE_%d", gtCount))
+							buff = strings.ReplaceAll(buff, GT_END, fmt.Sprintf("GT_END_%d", gtCount))
+							gtCount++
+						}
+						if text == LT {
+							buff = strings.ReplaceAll(buff, LT_TRUE, fmt.Sprintf("LT_TRUE_%d", ltCount))
+							buff = strings.ReplaceAll(buff, LT_END, fmt.Sprintf("LT_END_%d", ltCount))
+							ltCount++
+						}
 					}
 					text = fmt.Sprintf("// %s\n%s", text, buff)
 				}
