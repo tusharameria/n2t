@@ -62,9 +62,10 @@ func main() {
 	now := time.Now()
 	fmt.Println("Starting Translator...")
 
-	file, err := os.Open("tests/BasicTest.vm")
+	file, err := os.Open("tests/07/PointerTest/PointerTest.vm")
 	if err != nil {
 		fmt.Printf("%s\n", err)
+		return
 	}
 	defer file.Close()
 
@@ -219,15 +220,23 @@ func translateMemorySegCommant(args []string, num uint32) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("%s doesn't exist in argTwos", argTwo)
 		}
-		str += fmt.Sprintf("@%d\nD=A\n", num)
-		if argTwo != CONSTANT {
-			if argTwo == TEMP {
-				str += fmt.Sprintf("@%d\nA=D+A\nD=M\n", TEMP_INIT_ADDRESS)
-			} else {
-				str += fmt.Sprintf("@%s\nA=D+M\nD=M\n", argTwoVal)
+		if argTwo == POINTER {
+			buff := argTwos[THIS]
+			if num == 1 {
+				buff = argTwos[THAT]
 			}
+			str += fmt.Sprintf("@%s\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", buff)
+		} else {
+			str += fmt.Sprintf("@%d\nD=A\n", num)
+			if argTwo != CONSTANT {
+				if argTwo == TEMP {
+					str += fmt.Sprintf("@%d\nA=D+A\nD=M\n", TEMP_INIT_ADDRESS)
+				} else {
+					str += fmt.Sprintf("@%s\nA=D+M\nD=M\n", argTwoVal)
+				}
+			}
+			str += fmt.Sprintf("@SP\nM=M+1\nA=M\nA=A-1\nM=D\n")
 		}
-		str += fmt.Sprintf("@SP\nM=M+1\nA=M\nA=A-1\nM=D\n")
 	}
 
 	// pop local 3
@@ -269,13 +278,22 @@ func translateMemorySegCommant(args []string, num uint32) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("%s doesn't exist in argTwos", argTwo)
 		}
-		str += fmt.Sprintf("@%d\nD=A\n", num)
-		if argTwo == TEMP {
-			str += fmt.Sprintf("@%d\nD=D+A\n", TEMP_INIT_ADDRESS)
+
+		if argTwo == POINTER {
+			buff := argTwos[THIS]
+			if num == 1 {
+				buff = argTwos[THAT]
+			}
+			str += fmt.Sprintf("@SP\nM=M-1\n@SP\nA=M\nD=M\n@%s\nM=D\n", buff)
 		} else {
-			str += fmt.Sprintf("@%s\nA=D+M\nD=A\n", argTwoVal)
+			str += fmt.Sprintf("@%d\nD=A\n", num)
+			if argTwo == TEMP {
+				str += fmt.Sprintf("@%d\nD=D+A\n", TEMP_INIT_ADDRESS)
+			} else {
+				str += fmt.Sprintf("@%s\nA=D+M\nD=A\n", argTwoVal)
+			}
+			str += fmt.Sprintf("@R16\nM=D\n@SP\nM=M-1\nA=M\nD=M\n@R16\nA=M\nM=D\n")
 		}
-		str += fmt.Sprintf("@R16\nM=D\n@SP\nM=M-1\nA=M\nD=M\n@R16\nA=M\nM=D\n")
 	}
 
 	return fmt.Sprintf("// %s %s %d\n%s", argOne, argTwo, num, str), nil
