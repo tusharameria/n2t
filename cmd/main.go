@@ -71,11 +71,21 @@ var alArgs = map[string]string{
 	NOT: "@SP\nA=M-1\nM=!M\n",
 }
 
+const LABEL = "label"
+const GO_TO = "goto"
+const IF_GO_TO = "if-goto" // Pop the topmost value from the stack, and if that value is not zero, jump to the label.
+
+var branchingArgs = map[string]bool{
+	LABEL:    true,
+	GO_TO:    true,
+	IF_GO_TO: true,
+}
+
 func main() {
 	now := time.Now()
 	fmt.Println("Starting Translator...")
 
-	file, err := os.Open("tests/07/StackTest/StackTest.vm")
+	file, err := os.Open("tests/08/FibonacciSeries/FibonacciSeries.vm")
 	if err != nil {
 		fmt.Printf("%s\n", err)
 		return
@@ -122,40 +132,57 @@ func main() {
 		for {
 			if scanner.Scan() {
 				i++
-				text := scanner.Text()
-				args, num, ok := isValidMemorySegCommand(text)
-				if ok {
-					buff, err := translateMemorySegCommant(args, num)
-					if err != nil {
-						fmt.Printf("%s\n", err)
-						return
-					}
-					text = buff
-				}
-				if isValidALCommand(text) {
-					buff, ok := alArgs[text]
-					if !ok {
-						fmt.Printf("%s is not a valid alArgs key\n", text)
-						return
-					}
-					if text == EQ || text == GT || text == LT {
-						if text == EQ {
-							buff = strings.ReplaceAll(buff, EQ_TRUE, fmt.Sprintf("EQ_TRUE_%d", eqCount))
-							buff = strings.ReplaceAll(buff, EQ_END, fmt.Sprintf("EQ_END_%d", eqCount))
-							eqCount++
+				text, comment := cleanText(scanner.Text())
+				if text == "" {
+					text = fmt.Sprintf("//%s", comment)
+				} else {
+					args, num, ok := isValidMemorySegCommand(text)
+					if ok {
+						buff, err := translateMemorySegCommant(args, num)
+						if err != nil {
+							fmt.Printf("%s\n", err)
+							return
 						}
-						if text == GT {
-							buff = strings.ReplaceAll(buff, GT_TRUE, fmt.Sprintf("GT_TRUE_%d", gtCount))
-							buff = strings.ReplaceAll(buff, GT_END, fmt.Sprintf("GT_END_%d", gtCount))
-							gtCount++
+						text = buff
+					}
+					if isValidALCommand(text) {
+						buff, ok := alArgs[text]
+						if !ok {
+							fmt.Printf("%s is not a valid alArgs key\n", text)
+							return
 						}
-						if text == LT {
-							buff = strings.ReplaceAll(buff, LT_TRUE, fmt.Sprintf("LT_TRUE_%d", ltCount))
-							buff = strings.ReplaceAll(buff, LT_END, fmt.Sprintf("LT_END_%d", ltCount))
-							ltCount++
+						if text == EQ || text == GT || text == LT {
+							if text == EQ {
+								buff = strings.ReplaceAll(buff, EQ_TRUE, fmt.Sprintf("EQ_TRUE_%d", eqCount))
+								buff = strings.ReplaceAll(buff, EQ_END, fmt.Sprintf("EQ_END_%d", eqCount))
+								eqCount++
+							}
+							if text == GT {
+								buff = strings.ReplaceAll(buff, GT_TRUE, fmt.Sprintf("GT_TRUE_%d", gtCount))
+								buff = strings.ReplaceAll(buff, GT_END, fmt.Sprintf("GT_END_%d", gtCount))
+								gtCount++
+							}
+							if text == LT {
+								buff = strings.ReplaceAll(buff, LT_TRUE, fmt.Sprintf("LT_TRUE_%d", ltCount))
+								buff = strings.ReplaceAll(buff, LT_END, fmt.Sprintf("LT_END_%d", ltCount))
+								ltCount++
+							}
+						}
+						text = fmt.Sprintf("// %s\n%s", text, buff)
+					}
+					argsBranch, ok := isValidBranchingCommand(text)
+					if ok {
+						argOne := argsBranch[0]
+						argTwo := argsBranch[1]
+						text = fmt.Sprintf("//%s %s\n", argOne, argTwo)
+						if argOne == LABEL {
+							text += fmt.Sprintf("(%s)\n", argTwo)
+						} else if argOne == GO_TO {
+							text += fmt.Sprintf("@%s\n0;JMP\n", argTwo)
+						} else {
+							text += fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\n@%s\nD;JNE\n", argTwo)
 						}
 					}
-					text = fmt.Sprintf("// %s\n%s", text, buff)
 				}
 				messages <- text + "\n"
 				// time.Sleep(1 * time.Second)
@@ -217,6 +244,18 @@ func isValidMemorySegCommand(line string) ([]string, uint32, bool) {
 	}
 
 	return words[:2], uint32(num), true
+}
+
+func isValidBranchingCommand(line string) ([]string, bool) {
+	words := strings.Split(line, " ")
+	if len(words) != 2 {
+		return nil, false
+	}
+	argOne := words[0]
+	if _, okArgOne := branchingArgs[argOne]; !okArgOne {
+		return nil, false
+	}
+	return words, true
 }
 
 func translateMemorySegCommant(args []string, num uint32) (string, error) {
@@ -337,4 +376,13 @@ func isValidALCommand(line string) bool {
 		return false
 	}
 	return true
+}
+
+func cleanText(line string) (string, string) {
+	words := strings.SplitN(line, "//", 2)
+	text := ""
+	if len(words) == 2 {
+		text = words[1]
+	}
+	return strings.TrimRight(strings.TrimLeft(words[0], " \t"), " \t"), text
 }
