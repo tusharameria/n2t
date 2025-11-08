@@ -1,6 +1,6 @@
-# n2t-project7
+# n2t
 
-### Nand2Tetris Project 7 - VM Translator
+### Nand2Tetris (Mostly Part 2, from project 7)
 
 ## Run the command
 
