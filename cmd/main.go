@@ -81,11 +81,21 @@ var branchingArgs = map[string]bool{
 	IF_GO_TO: true,
 }
 
+const FUNCTION = "function"
+const RETURN = "return"
+const CALL = "call"
+
+var functionArgs = map[string]bool{
+	FUNCTION: true,
+	RETURN:   true,
+	CALL:     true,
+}
+
 func main() {
 	now := time.Now()
 	fmt.Println("Starting Translator...")
 
-	file, err := os.Open("tests/08/FibonacciSeries/FibonacciSeries.vm")
+	file, err := os.Open("tests/08/SimpleFunction/SimpleFunction.vm")
 	if err != nil {
 		fmt.Printf("%s\n", err)
 		return
@@ -138,7 +148,7 @@ func main() {
 				} else {
 					args, num, ok := isValidMemorySegCommand(text)
 					if ok {
-						buff, err := translateMemorySegCommant(args, num)
+						buff, err := translateMemorySegCommand(args, num)
 						if err != nil {
 							fmt.Printf("%s\n", err)
 							return
@@ -181,6 +191,32 @@ func main() {
 							text += fmt.Sprintf("@%s\n0;JMP\n", argTwo)
 						} else {
 							text += fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\n@%s\nD;JNE\n", argTwo)
+						}
+					}
+					argsFunction, ok := isValidFunctionCommand(text)
+					if ok {
+						argOne := argsFunction[0]
+						text = fmt.Sprintf("// %v\n", argsFunction)
+						if argOne == FUNCTION {
+							functionName := argsFunction[1]
+							numArgs, err := strconv.Atoi(argsFunction[2])
+							if err != nil {
+								fmt.Printf("Invalid number of args for function: %s\n", text)
+								return
+							}
+							text += fmt.Sprintf("(%s)\n", functionName)
+							for i := 0; i < numArgs; i++ {
+								text += fmt.Sprintf("@0\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n")
+							}
+						} else if argOne == RETURN {
+							text += fmt.Sprintf("@LCL\nD=M\n@R13\nM=D\n\n")
+							text += fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\n@ARG\nA=M\nM=D\n\n")
+							text += fmt.Sprintf("@ARG\nD=M+1\n@SP\nM=D\n\n")
+							text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@THAT\nM=D\n\n")
+							text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@THIS\nM=D\n\n")
+							text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@ARG\nM=D\n\n")
+							text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@LCL\nM=D\n\n")
+							text += fmt.Sprintf("(END)\n@END\n0;JMP\n\n")
 						}
 					}
 				}
@@ -258,7 +294,29 @@ func isValidBranchingCommand(line string) ([]string, bool) {
 	return words, true
 }
 
-func translateMemorySegCommant(args []string, num uint32) (string, error) {
+func isValidFunctionCommand(line string) ([]string, bool) {
+	words := strings.Split(line, " ")
+	length := len(words)
+	if length > 3 || length == 0 {
+		return nil, false
+	}
+	argOne := words[0]
+	if _, okArgOne := functionArgs[argOne]; !okArgOne {
+		return nil, false
+	}
+	if length == 1 && argOne != RETURN {
+		return nil, false
+	}
+	if length == 2 && argOne != CALL {
+		return nil, false
+	}
+	if length == 3 && argOne != FUNCTION {
+		return nil, false
+	}
+	return words, true
+}
+
+func translateMemorySegCommand(args []string, num uint32) (string, error) {
 	argOne := args[0]
 	argTwo := args[1]
 
