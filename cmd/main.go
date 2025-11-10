@@ -94,25 +94,23 @@ var functionArgs = map[string]bool{
 func main() {
 	now := time.Now()
 	fmt.Println("Starting Translator...")
+	folderName := "NestedCall"
+	fileName := "Sys"
+	outputDir := "output"
 
-	file, err := os.Open("tests/08/SimpleFunction/SimpleFunction.vm")
+	file, err := os.Open(fmt.Sprintf("tests/08/%s/%s.vm", folderName, fileName))
 	if err != nil {
 		fmt.Printf("%s\n", err)
 		return
 	}
 	defer file.Close()
 
-	filePath := file.Name()
-	fileNameExt := strings.Split(filePath, "/")
-	fileName := strings.Split(fileNameExt[len(fileNameExt)-1], ".")[0]
-
-	outputDir := "output"
-
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		fmt.Printf("%s\n", err)
 		return
 	}
 
+	fileName = folderName
 	outFile, err := os.Create(filepath.Join(outputDir, fmt.Sprintf("%s.asm", fileName)))
 	if err != nil {
 		fmt.Printf("%s\n", err)
@@ -139,6 +137,7 @@ func main() {
 		eqCount := 0
 		gtCount := 0
 		ltCount := 0
+		funcNames := []string{}
 		for {
 			if scanner.Scan() {
 				i++
@@ -199,16 +198,21 @@ func main() {
 						text = fmt.Sprintf("// %v\n", argsFunction)
 						if argOne == FUNCTION {
 							functionName := argsFunction[1]
-							numArgs, err := strconv.Atoi(argsFunction[2])
+							numLocals, err := strconv.Atoi(argsFunction[2])
 							if err != nil {
-								fmt.Printf("Invalid number of args for function: %s\n", text)
+								fmt.Printf("Invalid number of local args for function: %s\n", text)
 								return
 							}
 							text += fmt.Sprintf("(%s)\n", functionName)
-							for i := 0; i < numArgs; i++ {
+							for i := 0; i < numLocals; i++ {
 								text += fmt.Sprintf("@0\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n")
 							}
+							funcNames = append(funcNames, functionName)
 						} else if argOne == RETURN {
+							if len(funcNames) == 0 {
+								fmt.Printf("No function to return from at line %d\n", i)
+								return
+							}
 							text += fmt.Sprintf("@LCL\nD=M\n@R13\nM=D\n\n")
 							text += fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\n@ARG\nA=M\nM=D\n\n")
 							text += fmt.Sprintf("@ARG\nD=M+1\n@SP\nM=D\n\n")
@@ -216,7 +220,23 @@ func main() {
 							text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@THIS\nM=D\n\n")
 							text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@ARG\nM=D\n\n")
 							text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@LCL\nM=D\n\n")
-							text += fmt.Sprintf("(END)\n@END\n0;JMP\n\n")
+							text += fmt.Sprintf("@%s.RETURN\n0;JMP\n\n", funcNames[len(funcNames)-1])
+							funcNames = funcNames[:len(funcNames)-1]
+						} else {
+							functionName := argsFunction[1]
+							numArgs, err := strconv.Atoi(argsFunction[2])
+							if err != nil {
+								fmt.Printf("error in string conversion : %v", err)
+								return
+							}
+							text += fmt.Sprintf("@%s.RETURN\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n", functionName)
+							text += fmt.Sprintf("@LCL\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
+							text += fmt.Sprintf("@ARG\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
+							text += fmt.Sprintf("@THIS\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
+							text += fmt.Sprintf("@THAT\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
+							text += fmt.Sprintf("@SP\nD=M\n@5\nD=D-A\n@%d\nD=D-A\n@ARG\nM=D\n\n", numArgs)
+							text += fmt.Sprintf("@SP\nD=M\n@LCL\nM=D\n\n")
+							text += fmt.Sprintf("@%s\n0;JMP\n\n(%s.RETURN)\n", functionName, functionName)
 						}
 					}
 				}
@@ -307,10 +327,7 @@ func isValidFunctionCommand(line string) ([]string, bool) {
 	if length == 1 && argOne != RETURN {
 		return nil, false
 	}
-	if length == 2 && argOne != CALL {
-		return nil, false
-	}
-	if length == 3 && argOne != FUNCTION {
+	if length == 3 && argOne != FUNCTION && argOne != CALL {
 		return nil, false
 	}
 	return words, true
@@ -365,7 +382,7 @@ func translateMemorySegCommand(args []string, num uint32) (string, error) {
 					str += fmt.Sprintf("@%s\nA=D+M\nD=M\n", argTwoVal)
 				}
 			}
-			str += fmt.Sprintf("@SP\nM=M+1\nA=M\nA=A-1\nM=D\n")
+			str += fmt.Sprintf("@SP\nA=M\nM=D\n@SP\nM=M+1\n")
 		}
 	}
 
