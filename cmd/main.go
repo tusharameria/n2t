@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -97,6 +99,28 @@ func main() {
 	folderName := "NestedCall"
 	fileName := "Sys"
 	outputDir := "output"
+	inputPath := ""
+
+	flag.StringVar(&inputPath, "input", inputPath, "Path to the input .vm file/directory")
+	flag.Parse()
+
+	info, err := os.Stat(inputPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Printf("Input path does not exist: %s\n", inputPath)
+			return
+		}
+		fmt.Printf("Error accessing input path: %s\n", err)
+		return
+	}
+
+	if info.IsDir() {
+		log.Println("Is Directory")
+	} else {
+		log.Println("Is File")
+	}
+
+	return
 
 	file, err := os.Open(fmt.Sprintf("tests/08/%s/%s.vm", folderName, fileName))
 	if err != nil {
