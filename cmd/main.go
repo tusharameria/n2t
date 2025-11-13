@@ -4,14 +4,10 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"log"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
-	"syscall"
 	"time"
 )
 
@@ -96,12 +92,12 @@ var functionArgs = map[string]bool{
 func main() {
 	now := time.Now()
 	fmt.Println("Starting Translator...")
-	folderName := "NestedCall"
-	fileName := "Sys"
+	outputFileName := ""
 	outputDir := "output"
 	inputPath := ""
+	isDirectory := false
 
-	flag.StringVar(&inputPath, "input", inputPath, "Path to the input .vm file/directory")
+	flag.StringVar(&inputPath, "input", inputPath, "Path to the input file/directory")
 	flag.Parse()
 
 	info, err := os.Stat(inputPath)
@@ -114,165 +110,43 @@ func main() {
 		return
 	}
 
+	pathChunks := strings.Split(inputPath, "/")
+	lastName := pathChunks[len(pathChunks)-1]
+
 	if info.IsDir() {
-		log.Println("Is Directory")
+		isDirectory = true
+		outputFileName = lastName
 	} else {
-		log.Println("Is File")
+		fileNameChunks := strings.Split(lastName, ".")
+		ext := fileNameChunks[len(fileNameChunks)-1]
+		if ext != "vm" {
+			fmt.Printf("Input file is not a .vm file: %s\n", inputPath)
+			return
+		}
+		outputFileName = fileNameChunks[0]
 	}
 
-	return
+	msg := ""
 
-	file, err := os.Open(fmt.Sprintf("tests/08/%s/%s.vm", folderName, fileName))
-	if err != nil {
-		fmt.Printf("%s\n", err)
-		return
+	if !isDirectory {
+		msg, err = processFile(inputPath)
+		if err != nil {
+			fmt.Printf("%s\n", err)
+			return
+		}
 	}
-	defer file.Close()
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		fmt.Printf("%s\n", err)
 		return
 	}
 
-	fileName = folderName
-	outFile, err := os.Create(filepath.Join(outputDir, fmt.Sprintf("%s.asm", fileName)))
+	outFile, err := os.Create(filepath.Join(outputDir, fmt.Sprintf("%s.asm", outputFileName)))
 	if err != nil {
 		fmt.Printf("%s\n", err)
 		return
 	}
 	defer outFile.Close()
-
-	done := make(chan struct{})
-	messages := make(chan string, 1000)
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-
-	var once sync.Once
-	shutdown := func() {
-		once.Do(func() {
-			close(done)
-		})
-	}
-
-	go func() {
-		scanner := bufio.NewScanner(file)
-		i := 0
-		eqCount := 0
-		gtCount := 0
-		ltCount := 0
-		funcNames := []string{}
-		for {
-			if scanner.Scan() {
-				i++
-				text, comment := cleanText(scanner.Text())
-				if text == "" {
-					text = fmt.Sprintf("//%s", comment)
-				} else {
-					args, num, ok := isValidMemorySegCommand(text)
-					if ok {
-						buff, err := translateMemorySegCommand(args, num)
-						if err != nil {
-							fmt.Printf("%s\n", err)
-							return
-						}
-						text = buff
-					}
-					if isValidALCommand(text) {
-						buff, ok := alArgs[text]
-						if !ok {
-							fmt.Printf("%s is not a valid alArgs key\n", text)
-							return
-						}
-						if text == EQ || text == GT || text == LT {
-							if text == EQ {
-								buff = strings.ReplaceAll(buff, EQ_TRUE, fmt.Sprintf("EQ_TRUE_%d", eqCount))
-								buff = strings.ReplaceAll(buff, EQ_END, fmt.Sprintf("EQ_END_%d", eqCount))
-								eqCount++
-							}
-							if text == GT {
-								buff = strings.ReplaceAll(buff, GT_TRUE, fmt.Sprintf("GT_TRUE_%d", gtCount))
-								buff = strings.ReplaceAll(buff, GT_END, fmt.Sprintf("GT_END_%d", gtCount))
-								gtCount++
-							}
-							if text == LT {
-								buff = strings.ReplaceAll(buff, LT_TRUE, fmt.Sprintf("LT_TRUE_%d", ltCount))
-								buff = strings.ReplaceAll(buff, LT_END, fmt.Sprintf("LT_END_%d", ltCount))
-								ltCount++
-							}
-						}
-						text = fmt.Sprintf("// %s\n%s", text, buff)
-					}
-					argsBranch, ok := isValidBranchingCommand(text)
-					if ok {
-						argOne := argsBranch[0]
-						argTwo := argsBranch[1]
-						text = fmt.Sprintf("//%s %s\n", argOne, argTwo)
-						if argOne == LABEL {
-							text += fmt.Sprintf("(%s)\n", argTwo)
-						} else if argOne == GO_TO {
-							text += fmt.Sprintf("@%s\n0;JMP\n", argTwo)
-						} else {
-							text += fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\n@%s\nD;JNE\n", argTwo)
-						}
-					}
-					argsFunction, ok := isValidFunctionCommand(text)
-					if ok {
-						argOne := argsFunction[0]
-						text = fmt.Sprintf("// %v\n", argsFunction)
-						if argOne == FUNCTION {
-							functionName := argsFunction[1]
-							numLocals, err := strconv.Atoi(argsFunction[2])
-							if err != nil {
-								fmt.Printf("Invalid number of local args for function: %s\n", text)
-								return
-							}
-							text += fmt.Sprintf("(%s)\n", functionName)
-							for i := 0; i < numLocals; i++ {
-								text += fmt.Sprintf("@0\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n")
-							}
-							funcNames = append(funcNames, functionName)
-						} else if argOne == RETURN {
-							if len(funcNames) == 0 {
-								fmt.Printf("No function to return from at line %d\n", i)
-								return
-							}
-							text += fmt.Sprintf("@LCL\nD=M\n@R13\nM=D\n\n")
-							text += fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\n@ARG\nA=M\nM=D\n\n")
-							text += fmt.Sprintf("@ARG\nD=M+1\n@SP\nM=D\n\n")
-							text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@THAT\nM=D\n\n")
-							text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@THIS\nM=D\n\n")
-							text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@ARG\nM=D\n\n")
-							text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@LCL\nM=D\n\n")
-							text += fmt.Sprintf("@%s.RETURN\n0;JMP\n\n", funcNames[len(funcNames)-1])
-							funcNames = funcNames[:len(funcNames)-1]
-						} else {
-							functionName := argsFunction[1]
-							numArgs, err := strconv.Atoi(argsFunction[2])
-							if err != nil {
-								fmt.Printf("error in string conversion : %v", err)
-								return
-							}
-							text += fmt.Sprintf("@%s.RETURN\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n", functionName)
-							text += fmt.Sprintf("@LCL\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
-							text += fmt.Sprintf("@ARG\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
-							text += fmt.Sprintf("@THIS\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
-							text += fmt.Sprintf("@THAT\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
-							text += fmt.Sprintf("@SP\nD=M\n@5\nD=D-A\n@%d\nD=D-A\n@ARG\nM=D\n\n", numArgs)
-							text += fmt.Sprintf("@SP\nD=M\n@LCL\nM=D\n\n")
-							text += fmt.Sprintf("@%s\n0;JMP\n\n(%s.RETURN)\n", functionName, functionName)
-						}
-					}
-				}
-				messages <- text + "\n"
-				// time.Sleep(1 * time.Second)
-			} else {
-				close(messages)
-				shutdown()
-				return
-			}
-		}
-	}()
 
 	writer := bufio.NewWriter(outFile)
 	defer func() {
@@ -281,27 +155,141 @@ func main() {
 		}
 	}()
 
-	for msg := range messages {
-		_, err := writer.WriteString(msg)
-		if err != nil {
-			fmt.Printf("write error at line: %s\nerr : %v\n", msg, err)
-			shutdown()
-			return
-		}
+	_, err = writer.WriteString(msg)
+	if err != nil {
+		fmt.Printf("write error at line: %s\nerr : %v\n", msg, err)
+		return
 	}
 
-	go func() {
-		sig := <-sigCh
-		fmt.Printf("\nReceived signal : %v\n", sig)
-		shutdown()
-	}()
-
-	<-done
-
-	signal.Stop(sigCh)
 	fmt.Println("Closing Translator...")
 	fmt.Printf("%d us\n", time.Now().Sub(now).Microseconds())
 	return
+}
+
+func processFile(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		fmt.Printf("%s\n", err)
+		return "", err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	i := 0
+	eqCount := 0
+	gtCount := 0
+	ltCount := 0
+	funcNames := []string{}
+	finalText := ""
+	for {
+		if scanner.Scan() {
+			i++
+			text, comment := cleanText(scanner.Text())
+			if text == "" {
+				text = fmt.Sprintf("//%s", comment)
+			} else {
+				args, num, ok := isValidMemorySegCommand(text)
+				if ok {
+					buff, err := translateMemorySegCommand(args, num)
+					if err != nil {
+						fmt.Printf("%s\n", err)
+						return "", err
+					}
+					text = buff
+				}
+				if isValidALCommand(text) {
+					buff, ok := alArgs[text]
+					if !ok {
+						fmt.Printf("%s is not a valid alArgs key\n", text)
+						return "", fmt.Errorf("%s is not a valid alArgs key", text)
+					}
+					if text == EQ || text == GT || text == LT {
+						if text == EQ {
+							buff = strings.ReplaceAll(buff, EQ_TRUE, fmt.Sprintf("EQ_TRUE_%d", eqCount))
+							buff = strings.ReplaceAll(buff, EQ_END, fmt.Sprintf("EQ_END_%d", eqCount))
+							eqCount++
+						}
+						if text == GT {
+							buff = strings.ReplaceAll(buff, GT_TRUE, fmt.Sprintf("GT_TRUE_%d", gtCount))
+							buff = strings.ReplaceAll(buff, GT_END, fmt.Sprintf("GT_END_%d", gtCount))
+							gtCount++
+						}
+						if text == LT {
+							buff = strings.ReplaceAll(buff, LT_TRUE, fmt.Sprintf("LT_TRUE_%d", ltCount))
+							buff = strings.ReplaceAll(buff, LT_END, fmt.Sprintf("LT_END_%d", ltCount))
+							ltCount++
+						}
+					}
+					text = fmt.Sprintf("// %s\n%s", text, buff)
+				}
+				argsBranch, ok := isValidBranchingCommand(text)
+				if ok {
+					argOne := argsBranch[0]
+					argTwo := argsBranch[1]
+					text = fmt.Sprintf("//%s %s\n", argOne, argTwo)
+					if argOne == LABEL {
+						text += fmt.Sprintf("(%s)\n", argTwo)
+					} else if argOne == GO_TO {
+						text += fmt.Sprintf("@%s\n0;JMP\n", argTwo)
+					} else {
+						text += fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\n@%s\nD;JNE\n", argTwo)
+					}
+				}
+				argsFunction, ok := isValidFunctionCommand(text)
+				if ok {
+					argOne := argsFunction[0]
+					text = fmt.Sprintf("// %v\n", argsFunction)
+					if argOne == FUNCTION {
+						functionName := argsFunction[1]
+						numLocals, err := strconv.Atoi(argsFunction[2])
+						if err != nil {
+							fmt.Printf("Invalid number of local args for function: %s\n", text)
+							return "", err
+						}
+						text += fmt.Sprintf("(%s)\n", functionName)
+						for i := 0; i < numLocals; i++ {
+							text += fmt.Sprintf("@0\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n")
+						}
+						funcNames = append(funcNames, functionName)
+					} else if argOne == RETURN {
+						if len(funcNames) == 0 {
+							fmt.Printf("No function to return from at line %d\n", i)
+							return "", fmt.Errorf("No function to return from at line %d", i)
+						}
+						text += fmt.Sprintf("@LCL\nD=M\n@R13\nM=D\n\n")
+						text += fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\n@ARG\nA=M\nM=D\n\n")
+						text += fmt.Sprintf("@ARG\nD=M+1\n@SP\nM=D\n\n")
+						text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@THAT\nM=D\n\n")
+						text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@THIS\nM=D\n\n")
+						text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@ARG\nM=D\n\n")
+						text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@LCL\nM=D\n\n")
+						text += fmt.Sprintf("@%s.RETURN\n0;JMP\n\n", funcNames[len(funcNames)-1])
+						funcNames = funcNames[:len(funcNames)-1]
+					} else {
+						functionName := argsFunction[1]
+						numArgs, err := strconv.Atoi(argsFunction[2])
+						if err != nil {
+							fmt.Printf("error in string conversion : %v", err)
+							return "", err
+						}
+						text += fmt.Sprintf("@%s.RETURN\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n", functionName)
+						text += fmt.Sprintf("@LCL\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
+						text += fmt.Sprintf("@ARG\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
+						text += fmt.Sprintf("@THIS\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
+						text += fmt.Sprintf("@THAT\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
+						text += fmt.Sprintf("@SP\nD=M\n@5\nD=D-A\n@%d\nD=D-A\n@ARG\nM=D\n\n", numArgs)
+						text += fmt.Sprintf("@SP\nD=M\n@LCL\nM=D\n\n")
+						text += fmt.Sprintf("@%s\n0;JMP\n\n(%s.RETURN)\n", functionName, functionName)
+					}
+				}
+			}
+			finalText += text + "\n"
+			// time.Sleep(1 * time.Second)
+		} else {
+			break
+		}
+	}
+	return finalText, nil
 }
 
 func isValidMemorySegCommand(line string) ([]string, uint32, bool) {

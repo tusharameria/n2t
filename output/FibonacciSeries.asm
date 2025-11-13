@@ -14,10 +14,10 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // pop pointer 1
 @SP
@@ -32,10 +32,10 @@ M=D
 @0
 D=A
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // pop that 0
 @0
@@ -57,10 +57,10 @@ M=D
 @1
 D=A
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // pop that 1
 @1
@@ -85,19 +85,19 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // push constant 2
 @2
 D=A
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // sub
 @SP
@@ -134,10 +134,10 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 //if-goto COMPUTE_ELEMENT
 @SP
@@ -163,10 +163,10 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // push that 1
 @1
@@ -175,10 +175,10 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // add
 @SP
@@ -218,10 +218,10 @@ M=M+1
 @1
 D=A
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // add
 @SP
@@ -248,19 +248,19 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // push constant 1
 @1
 D=A
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // sub
 @SP
