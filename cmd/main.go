@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -89,6 +90,12 @@ var functionArgs = map[string]bool{
 	CALL:     true,
 }
 
+type DirTree struct {
+	Name     string
+	Path     string
+	Children []*DirTree
+}
+
 func main() {
 	now := time.Now()
 	fmt.Println("Starting Translator...")
@@ -96,6 +103,7 @@ func main() {
 	outputDir := "output"
 	inputPath := ""
 	isDirectory := false
+	// initialFileName := "Sys.vm"
 
 	flag.StringVar(&inputPath, "input", inputPath, "Path to the input file/directory")
 	flag.Parse()
@@ -134,7 +142,13 @@ func main() {
 			fmt.Printf("%s\n", err)
 			return
 		}
+	} else {
+		filepath.WalkDir(inputPath, func(path string, d fs.DirEntry, err error) error {
+			fmt.Printf("Name  : %s, IsDir : %t, Type : %s, path : %s\n", d.Name(), d.IsDir(), d.Type().String(), path)
+			return nil
+		})
 	}
+	return
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		fmt.Printf("%s\n", err)
@@ -290,6 +304,45 @@ func processFile(path string) (string, error) {
 		}
 	}
 	return finalText, nil
+}
+
+func buildDirTree(root string) (*DirTree, error) {
+	info, err := os.Stat(root)
+	if err != nil {
+		return nil, err
+	}
+	var dirTree *DirTree
+	if !info.IsDir() {
+		parts := strings.Split(info.Name(), ".")
+		ext := parts[len(parts)-1]
+		if ext == "vm" {
+			dirTree = &DirTree{
+				Name: info.Name(),
+				Path: root,
+			}
+		}
+	} else {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, entry := range entries {
+			childPath := filepath.Join(root, entry.Name())
+			childNode, err := buildDirTree(childPath)
+			if err != nil {
+				return nil, err
+			}
+			if childNode != nil {
+				dirTree = &DirTree{
+					Name:     info.Name(),
+					Path:     root,
+					Children: append(dirTree.Children, childNode),
+				}
+			}
+		}
+	}
+	return dirTree, nil
 }
 
 func isValidMemorySegCommand(line string) ([]string, uint32, bool) {
