@@ -125,7 +125,7 @@ M=D
 
 //
 //label LOOP
-(LOOP)
+(FibonacciSeries.LOOP)
 
 // push argument 0
 @0
@@ -144,16 +144,16 @@ M=M+1
 M=M-1
 A=M
 D=M
-@COMPUTE_ELEMENT
+@FibonacciSeries.COMPUTE_ELEMENT
 D;JNE
 
 //goto END
-@END
+@FibonacciSeries.END
 0;JMP
 
 //
 //label COMPUTE_ELEMENT
-(COMPUTE_ELEMENT)
+(FibonacciSeries.COMPUTE_ELEMENT)
 
 // that[2] = that[0] + that[1]
 // push that 0
@@ -287,10 +287,10 @@ A=M
 M=D
 
 //goto LOOP
-@LOOP
+@FibonacciSeries.LOOP
 0;JMP
 
 //
 //label END
-(END)
+(FibonacciSeries.END)
 

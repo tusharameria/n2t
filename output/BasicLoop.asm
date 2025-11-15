@@ -11,10 +11,10 @@
 @0
 D=A
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // pop local 0
 @0
@@ -33,7 +33,7 @@ A=M
 M=D
 
 //label LOOP
-(LOOP)
+(BasicLoop.LOOP)
 
 // push argument 0
 @0
@@ -42,10 +42,10 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // push local 0
 @0
@@ -54,10 +54,10 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // add
 @SP
@@ -90,19 +90,19 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // push constant 1
 @1
 D=A
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // sub
 @SP
@@ -135,17 +135,17 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 //if-goto LOOP
 @SP
 M=M-1
 A=M
 D=M
-@LOOP
+@BasicLoop.LOOP
 D;JNE
 
 // push local 0
@@ -155,8 +155,8 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 

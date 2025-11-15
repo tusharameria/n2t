@@ -30,10 +30,10 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // push local 1
 @1
@@ -42,10 +42,10 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // add
 @SP
@@ -67,10 +67,10 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // add
 @SP
@@ -87,10 +87,10 @@ D=A
 A=D+M
 D=M
 @SP
-M=M+1
 A=M
-A=A-1
 M=D
+@SP
+M=M+1
 
 // sub
 @SP
@@ -104,6 +104,12 @@ M=M-D
 @LCL
 D=M
 @R13
+M=D
+
+@5
+A=D-A
+D=M
+@R14
 M=D
 
 @SP
@@ -143,8 +149,8 @@ D=M
 @LCL
 M=D
 
-(END)
-@END
+@R14
+A=M
 0;JMP
 
 

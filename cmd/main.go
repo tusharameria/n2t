@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -103,7 +102,8 @@ func main() {
 	outputDir := "output"
 	inputPath := ""
 	isDirectory := false
-	// initialFileName := "Sys.vm"
+	initialFileName := "Sys.vm"
+	funcCounters := make(map[string]int)
 
 	flag.StringVar(&inputPath, "input", inputPath, "Path to the input file/directory")
 	flag.Parse()
@@ -137,18 +137,75 @@ func main() {
 	msg := ""
 
 	if !isDirectory {
-		msg, err = processFile(inputPath)
+		msg, _, err = processFile(inputPath, outputFileName, false, funcCounters)
 		if err != nil {
 			fmt.Printf("%s\n", err)
 			return
 		}
 	} else {
-		filepath.WalkDir(inputPath, func(path string, d fs.DirEntry, err error) error {
-			fmt.Printf("Name  : %s, IsDir : %t, Type : %s, path : %s\n", d.Name(), d.IsDir(), d.Type().String(), path)
-			return nil
-		})
+		tree, err := buildDirTree(inputPath)
+		if err != nil {
+			fmt.Printf("%s\n", err)
+			return
+		}
+
+		var initFileInfo *DirTree
+
+		for i := 0; i < len(tree.Children); i++ {
+			if tree.Children[i].Name == initialFileName {
+				initFileInfo = tree.Children[i]
+			}
+		}
+
+		if initFileInfo == nil {
+			fmt.Println("no Sys.vm file present")
+			return
+		}
+
+		calledFiles := make(map[string]bool)
+		queue := []string{}
+
+		// Bootstrap the initial SP assembly code
+		msg += "// Bootstrap Code\n"
+		msg += "@256\nD=A\n@SP\nM=D\n"
+		msg += fmt.Sprintf("@%s\n0;JMP\n\n", strings.Replace(initialFileName, "vm", "init", -1))
+
+		res, calledFileNames, err := processFile(initFileInfo.Path, initFileInfo.Name, true, funcCounters)
+		if err != nil {
+			fmt.Printf("%s\n", err)
+			return
+		}
+		msg += res
+
+		fmt.Printf("calledFileNames : %s\n", calledFileNames)
+
+		for _, name := range calledFileNames {
+			if _, ok := calledFiles[name]; !ok {
+				queue = append(queue, name)
+				calledFiles[name] = true
+			}
+		}
+
+		for len(queue) > 0 {
+			firstFileName := queue[0]
+			queue = queue[1:]
+
+			res, newFiles, err := processFile(filepath.Join(inputPath, fmt.Sprintf("%s.vm", firstFileName)), fmt.Sprintf("%s.vm", firstFileName), false, funcCounters)
+			if err != nil {
+				fmt.Printf("%s\n", err)
+				return
+			}
+
+			msg += res
+			for _, name := range newFiles {
+				if _, ok := calledFiles[name]; !ok {
+					queue = append(queue, name)
+					calledFiles[name] = true
+				}
+			}
+		}
+
 	}
-	return
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		fmt.Printf("%s\n", err)
@@ -180,11 +237,12 @@ func main() {
 	return
 }
 
-func processFile(path string) (string, error) {
+func processFile(path, fullName string, isSys bool, funcCounters map[string]int) (string, []string, error) {
+
 	file, err := os.Open(path)
 	if err != nil {
 		fmt.Printf("%s\n", err)
-		return "", err
+		return "", nil, err
 	}
 	defer file.Close()
 
@@ -193,8 +251,11 @@ func processFile(path string) (string, error) {
 	eqCount := 0
 	gtCount := 0
 	ltCount := 0
-	funcNames := []string{}
 	finalText := ""
+	parts := strings.Split(fullName, ".")
+	fileName := parts[0]
+	calledFileNames := []string{}
+
 	for {
 		if scanner.Scan() {
 			i++
@@ -207,7 +268,7 @@ func processFile(path string) (string, error) {
 					buff, err := translateMemorySegCommand(args, num)
 					if err != nil {
 						fmt.Printf("%s\n", err)
-						return "", err
+						return "", nil, err
 					}
 					text = buff
 				}
@@ -215,7 +276,7 @@ func processFile(path string) (string, error) {
 					buff, ok := alArgs[text]
 					if !ok {
 						fmt.Printf("%s is not a valid alArgs key\n", text)
-						return "", fmt.Errorf("%s is not a valid alArgs key", text)
+						return "", nil, fmt.Errorf("%s is not a valid alArgs key", text)
 					}
 					if text == EQ || text == GT || text == LT {
 						if text == EQ {
@@ -242,11 +303,11 @@ func processFile(path string) (string, error) {
 					argTwo := argsBranch[1]
 					text = fmt.Sprintf("//%s %s\n", argOne, argTwo)
 					if argOne == LABEL {
-						text += fmt.Sprintf("(%s)\n", argTwo)
+						text += fmt.Sprintf("(%s.%s)\n", fileName, argTwo)
 					} else if argOne == GO_TO {
-						text += fmt.Sprintf("@%s\n0;JMP\n", argTwo)
+						text += fmt.Sprintf("@%s.%s\n0;JMP\n", fileName, argTwo)
 					} else {
-						text += fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\n@%s\nD;JNE\n", argTwo)
+						text += fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\n@%s.%s\nD;JNE\n", fileName, argTwo)
 					}
 				}
 				argsFunction, ok := isValidFunctionCommand(text)
@@ -258,42 +319,48 @@ func processFile(path string) (string, error) {
 						numLocals, err := strconv.Atoi(argsFunction[2])
 						if err != nil {
 							fmt.Printf("Invalid number of local args for function: %s\n", text)
-							return "", err
+							return "", nil, err
 						}
 						text += fmt.Sprintf("(%s)\n", functionName)
 						for i := 0; i < numLocals; i++ {
 							text += fmt.Sprintf("@0\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n")
 						}
-						funcNames = append(funcNames, functionName)
 					} else if argOne == RETURN {
-						if len(funcNames) == 0 {
-							fmt.Printf("No function to return from at line %d\n", i)
-							return "", fmt.Errorf("No function to return from at line %d", i)
-						}
 						text += fmt.Sprintf("@LCL\nD=M\n@R13\nM=D\n\n")
+						text += fmt.Sprintf("@5\nA=D-A\nD=M\n@R14\nM=D\n\n")
 						text += fmt.Sprintf("@SP\nM=M-1\nA=M\nD=M\n@ARG\nA=M\nM=D\n\n")
 						text += fmt.Sprintf("@ARG\nD=M+1\n@SP\nM=D\n\n")
 						text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@THAT\nM=D\n\n")
 						text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@THIS\nM=D\n\n")
 						text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@ARG\nM=D\n\n")
 						text += fmt.Sprintf("@R13\nAM=M-1\nD=M\n@LCL\nM=D\n\n")
-						text += fmt.Sprintf("@%s.RETURN\n0;JMP\n\n", funcNames[len(funcNames)-1])
-						funcNames = funcNames[:len(funcNames)-1]
+						text += fmt.Sprintf("@R14\nA=M\n0;JMP\n\n")
 					} else {
 						functionName := argsFunction[1]
+						parts := strings.Split(functionName, ".")
+						if parts[0] != fileName {
+							calledFileNames = append(calledFileNames, parts[0])
+						}
 						numArgs, err := strconv.Atoi(argsFunction[2])
 						if err != nil {
 							fmt.Printf("error in string conversion : %v", err)
-							return "", err
+							return "", nil, err
 						}
-						text += fmt.Sprintf("@%s.RETURN\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n", functionName)
+						num := 0
+						if val, ok := funcCounters[functionName]; ok {
+							num = val
+						} else {
+							funcCounters[functionName] = 0
+						}
+						text += fmt.Sprintf("@%s.RETURN.%d\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n", functionName, num)
 						text += fmt.Sprintf("@LCL\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
 						text += fmt.Sprintf("@ARG\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
 						text += fmt.Sprintf("@THIS\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
 						text += fmt.Sprintf("@THAT\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
-						text += fmt.Sprintf("@SP\nD=M\n@5\nD=D-A\n@%d\nD=D-A\n@ARG\nM=D\n\n", numArgs)
+						text += fmt.Sprintf("@%d\nD=A\n@5\nD=D+A\n@SP\nD=M-D\n@ARG\nM=D\n\n", numArgs)
 						text += fmt.Sprintf("@SP\nD=M\n@LCL\nM=D\n\n")
-						text += fmt.Sprintf("@%s\n0;JMP\n\n(%s.RETURN)\n", functionName, functionName)
+						text += fmt.Sprintf("@%s\n0;JMP\n\n(%s.RETURN.%d)\n", functionName, functionName, num)
+						funcCounters[functionName]++
 					}
 				}
 			}
@@ -303,7 +370,7 @@ func processFile(path string) (string, error) {
 			break
 		}
 	}
-	return finalText, nil
+	return finalText, calledFileNames, nil
 }
 
 func buildDirTree(root string) (*DirTree, error) {
@@ -326,6 +393,11 @@ func buildDirTree(root string) (*DirTree, error) {
 		if err != nil {
 			return nil, err
 		}
+		dirTree = &DirTree{
+			Name: info.Name(),
+			Path: root,
+		}
+		var children []*DirTree
 
 		for _, entry := range entries {
 			childPath := filepath.Join(root, entry.Name())
@@ -334,15 +406,25 @@ func buildDirTree(root string) (*DirTree, error) {
 				return nil, err
 			}
 			if childNode != nil {
-				dirTree = &DirTree{
-					Name:     info.Name(),
-					Path:     root,
-					Children: append(dirTree.Children, childNode),
-				}
+				children = append(children, childNode)
 			}
+		}
+		if len(children) != 0 {
+			dirTree.Children = children
 		}
 	}
 	return dirTree, nil
+}
+
+func printDirTree(tree *DirTree, level int) {
+	trail := ""
+	for i := 0; i < level; i++ {
+		trail += "-"
+	}
+	fmt.Printf("%s%s\n", trail, tree.Name)
+	for i := 0; i < len(tree.Children); i++ {
+		printDirTree(tree.Children[i], level+1)
+	}
 }
 
 func isValidMemorySegCommand(line string) ([]string, uint32, bool) {

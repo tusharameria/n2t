@@ -44,7 +44,7 @@ D=M
 M=D
 
 // [call Sys.main 0]
-@Sys.main.RETURN
+@Sys.main.RETURN.0
 D=A
 @SP
 A=M
@@ -101,7 +101,7 @@ M=D
 @Sys.main
 0;JMP
 
-(Sys.main.RETURN)
+(Sys.main.RETURN.0)
 
 // pop temp 1
 @1
@@ -119,10 +119,10 @@ A=M
 M=D
 
 //label LOOP
-(LOOP)
+(Sys.LOOP)
 
 //goto LOOP
-@LOOP
+@Sys.LOOP
 0;JMP
 
 //
@@ -291,7 +291,7 @@ M=D
 M=M+1
 
 // [call Sys.add12 1]
-@Sys.add12.RETURN
+@Sys.add12.RETURN.0
 D=A
 @SP
 A=M
@@ -348,7 +348,7 @@ M=D
 @Sys.add12
 0;JMP
 
-(Sys.add12.RETURN)
+(Sys.add12.RETURN.0)
 
 // pop temp 0
 @0
@@ -463,6 +463,12 @@ D=M
 @R13
 M=D
 
+@5
+A=D-A
+D=M
+@R14
+M=D
+
 @SP
 M=M-1
 A=M
@@ -500,7 +506,8 @@ D=M
 @LCL
 M=D
 
-@Sys.main.RETURN
+@R14
+A=M
 0;JMP
 
 
@@ -580,6 +587,12 @@ D=M
 @R13
 M=D
 
+@5
+A=D-A
+D=M
+@R14
+M=D
+
 @SP
 M=M-1
 A=M
@@ -617,7 +630,8 @@ D=M
 @LCL
 M=D
 
-@Sys.add12.RETURN
+@R14
+A=M
 0;JMP
 
 
