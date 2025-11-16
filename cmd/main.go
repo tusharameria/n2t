@@ -105,6 +105,10 @@ func main() {
 	initialFileName := "Sys.vm"
 	funcCounters := make(map[string]int)
 
+	eqCount := 0
+	gtCount := 0
+	ltCount := 0
+
 	flag.StringVar(&inputPath, "input", inputPath, "Path to the input file/directory")
 	flag.Parse()
 
@@ -137,7 +141,7 @@ func main() {
 	msg := ""
 
 	if !isDirectory {
-		msg, _, err = processFile(inputPath, outputFileName, false, funcCounters)
+		msg, _, err = processFile(inputPath, outputFileName, &eqCount, &gtCount, &ltCount, funcCounters)
 		if err != nil {
 			fmt.Printf("%s\n", err)
 			return
@@ -178,7 +182,7 @@ func main() {
 		msg += fmt.Sprintf("@SP\nD=M\n@LCL\nM=D\n\n")
 		msg += fmt.Sprintf("@%s\n0;JMP\n\n(%s.RETURN.%d)\n", buffName, buffName, 0)
 
-		res, calledFileNames, err := processFile(initFileInfo.Path, initFileInfo.Name, true, funcCounters)
+		res, calledFileNames, err := processFile(initFileInfo.Path, initFileInfo.Name, &eqCount, &gtCount, &ltCount, funcCounters)
 		if err != nil {
 			fmt.Printf("%s\n", err)
 			return
@@ -198,7 +202,7 @@ func main() {
 			firstFileName := queue[0]
 			queue = queue[1:]
 
-			res, newFiles, err := processFile(filepath.Join(inputPath, fmt.Sprintf("%s.vm", firstFileName)), fmt.Sprintf("%s.vm", firstFileName), false, funcCounters)
+			res, newFiles, err := processFile(filepath.Join(inputPath, fmt.Sprintf("%s.vm", firstFileName)), fmt.Sprintf("%s.vm", firstFileName), &eqCount, &gtCount, &ltCount, funcCounters)
 			if err != nil {
 				fmt.Printf("%s\n", err)
 				return
@@ -245,7 +249,7 @@ func main() {
 	return
 }
 
-func processFile(path, fullName string, isSys bool, funcCounters map[string]int) (string, []string, error) {
+func processFile(path, fullName string, eqCount, gtCount, ltCount *int, funcCounters map[string]int) (string, []string, error) {
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -256,9 +260,6 @@ func processFile(path, fullName string, isSys bool, funcCounters map[string]int)
 
 	scanner := bufio.NewScanner(file)
 	i := 0
-	eqCount := 0
-	gtCount := 0
-	ltCount := 0
 	finalText := ""
 	parts := strings.Split(fullName, ".")
 	fileName := parts[0]
@@ -288,19 +289,19 @@ func processFile(path, fullName string, isSys bool, funcCounters map[string]int)
 					}
 					if text == EQ || text == GT || text == LT {
 						if text == EQ {
-							buff = strings.ReplaceAll(buff, EQ_TRUE, fmt.Sprintf("EQ_TRUE_%d", eqCount))
-							buff = strings.ReplaceAll(buff, EQ_END, fmt.Sprintf("EQ_END_%d", eqCount))
-							eqCount++
+							buff = strings.ReplaceAll(buff, EQ_TRUE, fmt.Sprintf("EQ_TRUE_%d", *eqCount))
+							buff = strings.ReplaceAll(buff, EQ_END, fmt.Sprintf("EQ_END_%d", *eqCount))
+							*eqCount++
 						}
 						if text == GT {
-							buff = strings.ReplaceAll(buff, GT_TRUE, fmt.Sprintf("GT_TRUE_%d", gtCount))
-							buff = strings.ReplaceAll(buff, GT_END, fmt.Sprintf("GT_END_%d", gtCount))
-							gtCount++
+							buff = strings.ReplaceAll(buff, GT_TRUE, fmt.Sprintf("GT_TRUE_%d", *gtCount))
+							buff = strings.ReplaceAll(buff, GT_END, fmt.Sprintf("GT_END_%d", *gtCount))
+							*gtCount++
 						}
 						if text == LT {
-							buff = strings.ReplaceAll(buff, LT_TRUE, fmt.Sprintf("LT_TRUE_%d", ltCount))
-							buff = strings.ReplaceAll(buff, LT_END, fmt.Sprintf("LT_END_%d", ltCount))
-							ltCount++
+							buff = strings.ReplaceAll(buff, LT_TRUE, fmt.Sprintf("LT_TRUE_%d", *ltCount))
+							buff = strings.ReplaceAll(buff, LT_END, fmt.Sprintf("LT_END_%d", *ltCount))
+							*ltCount++
 						}
 					}
 					text = fmt.Sprintf("// %s\n%s", text, buff)
