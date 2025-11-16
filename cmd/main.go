@@ -166,9 +166,17 @@ func main() {
 		queue := []string{}
 
 		// Bootstrap the initial SP assembly code
+		buffName := strings.Replace(initialFileName, "vm", "init", -1)
 		msg += "// Bootstrap Code\n"
 		msg += "@256\nD=A\n@SP\nM=D\n"
-		msg += fmt.Sprintf("@%s\n0;JMP\n\n", strings.Replace(initialFileName, "vm", "init", -1))
+		msg += fmt.Sprintf("@%s.RETURN.%d\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n", buffName, 0)
+		msg += fmt.Sprintf("@LCL\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
+		msg += fmt.Sprintf("@ARG\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
+		msg += fmt.Sprintf("@THIS\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
+		msg += fmt.Sprintf("@THAT\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n\n")
+		msg += fmt.Sprintf("@%d\nD=A\n@5\nD=D+A\n@SP\nD=M-D\n@ARG\nM=D\n\n", 0)
+		msg += fmt.Sprintf("@SP\nD=M\n@LCL\nM=D\n\n")
+		msg += fmt.Sprintf("@%s\n0;JMP\n\n(%s.RETURN.%d)\n", buffName, buffName, 0)
 
 		res, calledFileNames, err := processFile(initFileInfo.Path, initFileInfo.Name, true, funcCounters)
 		if err != nil {
