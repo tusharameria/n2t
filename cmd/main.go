@@ -274,7 +274,7 @@ func processFile(path, fullName string, eqCount, gtCount, ltCount *int, funcCoun
 			} else {
 				args, num, ok := isValidMemorySegCommand(text)
 				if ok {
-					buff, err := translateMemorySegCommand(args, num)
+					buff, err := translateMemorySegCommand(args, num, fileName)
 					if err != nil {
 						fmt.Printf("%s\n", err)
 						return "", nil, err
@@ -489,7 +489,7 @@ func isValidFunctionCommand(line string) ([]string, bool) {
 	return words, true
 }
 
-func translateMemorySegCommand(args []string, num uint32) (string, error) {
+func translateMemorySegCommand(args []string, num uint32, fileName string) (string, error) {
 	argOne := args[0]
 	argTwo := args[1]
 
@@ -529,6 +529,8 @@ func translateMemorySegCommand(args []string, num uint32) (string, error) {
 				buff = argTwos[THAT]
 			}
 			str += fmt.Sprintf("@%s\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", buff)
+		} else if argTwo == STATIC {
+			str += fmt.Sprintf("@%s.%d\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", fileName, num)
 		} else {
 			str += fmt.Sprintf("@%d\nD=A\n", num)
 			if argTwo != CONSTANT {
@@ -588,6 +590,8 @@ func translateMemorySegCommand(args []string, num uint32) (string, error) {
 				buff = argTwos[THAT]
 			}
 			str += fmt.Sprintf("@SP\nM=M-1\n@SP\nA=M\nD=M\n@%s\nM=D\n", buff)
+		} else if argTwo == STATIC {
+			str += fmt.Sprintf("@SP\nM=M-1\n@SP\nA=M\nD=M\n@%s.%d\nM=D\n", fileName, num)
 		} else {
 			str += fmt.Sprintf("@%d\nD=A\n", num)
 			if argTwo == TEMP {
